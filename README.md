@@ -8,3 +8,4 @@ Package to construct spiking network models of songbird nucleus HVC
 3. `hvc.py` - functions for implementing HVC neurons
 4. `conductance.py` - functions for analysing conductance model simulations
 5. `networks.py` - functions for simulating large networks of Izhikevich neurons
+6. `poly.py` - functions for constructing and evolving polychronous chains of neurons
