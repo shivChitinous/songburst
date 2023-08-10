@@ -363,8 +363,8 @@ dev = ["pytest (>=4.3.0)", "pytest-cov (>=2.6.1)", "mypy (>=0.730)", "sphinx (>=
 
 [[package]]
 name = "numpy"
-version = "1.24.4"
-description = "Fundamental package for array computing in Python"
+version = "1.23.5"
+description = "NumPy is the fundamental package for array computing with Python."
 category = "main"
 optional = false
 python-versions = ">=3.8"
@@ -655,7 +655,7 @@ python-versions = ">=3.7"
 
 [[package]]
 name = "tqdm"
-version = "4.66.0"
+version = "4.66.1"
 description = "Fast, Extensible Progress Meter"
 category = "main"
 optional = false
@@ -730,7 +730,7 @@ testing = ["pytest (>=6)", "pytest-checkdocs (>=2.4)", "pytest-cov", "pytest-ena
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.8"
-content-hash = "90d193983465319366e0430bd650f1f884c2c4c152ebb8163c24f6b3a0a352cd"
+content-hash = "c9bd2b0a57356b6db6e46a43b3b5be9220e53209dbfab772debde3946dedecfa"
 
 [metadata.files]
 asteval = []

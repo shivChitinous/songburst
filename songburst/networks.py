@@ -13,6 +13,8 @@
 #     name: python3
 # ---
 
+#for documentation read networks.md
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt

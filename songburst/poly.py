@@ -15,9 +15,9 @@
 
 import numpy as np
 import pandas as pd
-import scripts.hvcPy.hvc as hvc
-import scripts.hvcPy.izneurons as izn
-import scripts.hvcPy.neurons as nrn
+import songburst.hvc as hvc
+import songburst.izneurons as izn
+import songburst.neurons as nrn
 import matplotlib.pyplot as plt
 import seaborn as sns
 

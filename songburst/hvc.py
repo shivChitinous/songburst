@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import scripts.hvcPy.izneurons as izn
+import songburst.izneurons as izn
 
 # for documentation read hvc.md
 

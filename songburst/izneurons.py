@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns; sns.set()
-import scripts.hvcPy.neurons as nrn
+import songburst.neurons as nrn
 
 # for documentation read izneurons.md
 

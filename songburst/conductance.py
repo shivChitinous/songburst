@@ -19,8 +19,8 @@ def sptr_con(VI,v,i):
         sp[n] = t[sptr.iloc[:,n]==1].astype('float64')
     return sp
 
-def hvc_neuron(x,plotter = False,name='hvcneuron'):
-    VI = pd.read_csv('csv_files/hvc_'+x+'_current_clamp_VI.csv')
+def hvc_neuron(x,plotter = False,name='hvcneuron',csv_dir = 'data/hvc_'):
+    VI = pd.read_csv(csv_dir+x+'_current_clamp_VI.csv')
     i = range(0,np.shape(VI)[1],2)
     VI.iloc[:,i] = VI.iloc[:,i]*1e-12
     v = range(1,np.shape(VI)[1],2)
