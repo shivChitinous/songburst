@@ -1,5 +1,5 @@
 # songburst
-Package to construct spiking network models of songbird nucleus HVC
+Package to construct models of songbird nucleus HVC
 
 ## files
 
