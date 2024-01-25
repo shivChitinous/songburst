@@ -47,7 +47,7 @@ def modulate_net(k1,k2,k3,a,b,c,d,vth,C,m):
     C = C*(1-m)
     return k1,k2,k3,a,b,c,d,vth,C
 
-def evolve(n1,df,psc = nrn.PSC(1e-3,2e-3,0.05e-9,1e-4)):
+def evolve(n1,df,psc = nrn.PSC(0.5e-3,1e-3,0.05e-9,1e-5)):
     time = np.array(df['t'])
     dt = time[1]-time[0]
     n1.V = np.ones(np.size(df['t']))*n1.E
@@ -81,7 +81,7 @@ def evolve(n1,df,psc = nrn.PSC(1e-3,2e-3,0.05e-9,1e-4)):
     n1.V = v; n1.U = u; n1.sptr = sptr; n1.Ips = Sps/C #normalised by membrane capacitance
     return n1
 
-def evolve_net(X,conn,df,Iec_df,mod_df = None,psc = nrn.PSC(1e-3,2e-3,0.05e-9,1e-4),delays=None,upto=None):
+def evolve_net(X,conn,df,Iec_df,mod_df = None,psc = nrn.PSC(0.5e-3,1e-3,0.05e-9,1e-5),delays=None,upto=None):
     
     #get time vector and step size
     time = np.array(df['t'])

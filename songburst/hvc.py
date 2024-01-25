@@ -19,6 +19,48 @@ def paramshvc():#define parameters with homogeneity for a generic excitatory HVC
 
 def paramshvcra(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
     h = h*1e-3 #to ensure required dynamics
+    k1 = np.random.normal(loc = 0.06849370077544009*1e6, scale = h*0.06849370077544009*1e6)
+    k2 = np.random.normal(loc = 8.561712596930011*1e3, scale = h*8.561712596930011*1e3)
+    k3 = np.random.normal(loc = 239.7279527140403, scale = h*239.7279527140403)
+    a = np.random.normal(loc = 0.03141656545046908*1e3, scale = h*0.03141656545046908*1e3)
+    b = np.random.normal(loc = 0.04186796270086881*1e3, scale = h*0.04186796270086881*1e3)
+    c = np.random.normal(loc = (-51.59979175324334)*1e-3, scale = abs(h*(-51.59979175324334)*1e-3))
+    d = np.random.normal(loc = 2.9362081518193364, scale = h*2.9362081518193364)
+    E = np.random.normal(loc = (-81.38132030112037)*1e-3, scale = abs(h*(-81.38132030112037)*1e-3))
+    vth = np.random.normal(loc = 20*1e-3, scale = h*20*1e-3)
+    C = np.random.normal(loc = 111.15888637642897*1e-12, scale = h*111.15888637642897*1e-12) #F (Normalisation Constant)
+    return k1,k2,k3,a,b,c,d,E,vth,C
+
+def paramshvcx(h=1):#define parameters with homogeneity for a generic excitatory HVC neuron
+    h = h*1e-3 #to ensure required dynamics
+    k1 = np.random.normal(loc = 0.06849370077544009*1e6, scale = h*0.06849370077544009*1e6)
+    k2 = np.random.normal(loc = 8.561712596930011*1e3, scale = h*8.561712596930011*1e3)
+    k3 = np.random.normal(loc = 239.7279527140403, scale = h*239.7279527140403)
+    a = np.random.normal(loc = 0.03141656545046908*1e3, scale = h*0.03141656545046908*1e3)
+    b = np.random.normal(loc = 0.04186796270086881*1e3, scale = h*0.04186796270086881*1e3)
+    c = np.random.normal(loc = (-51.59979175324334)*1e-3, scale = abs(h*(-51.59979175324334)*1e-3))
+    d = np.random.normal(loc = 2.9362081518193364, scale = h*2.9362081518193364)
+    E = np.random.normal(loc = (-81.38132030112037)*1e-3, scale = abs(h*(-81.38132030112037)*1e-3))
+    vth = np.random.normal(loc = 20*1e-3, scale = h*20*1e-3)
+    C = np.random.normal(loc = 111.15888637642897*1e-12, scale = h*111.15888637642897*1e-12) #F (Normalisation Constant)
+    return k1,k2,k3,a,b,c,d,E,vth,C
+
+def paramshvcint(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
+    h = h*1e-3
+    k1 = np.random.normal(loc = 0.30887914093147095*1e6, scale = h*0.30887914093147095*1e6)
+    k2 = np.random.normal(loc = 38.60989261643387*1e3, scale = h*38.60989261643387*1e3)
+    k3 = np.random.normal(loc = 1081.0769932601484, scale = h*1081.0769932601484)
+    a = np.random.normal(loc = 0.1640855439624411*1e3, scale = h*0.1640855439624411*1e3)
+    b = np.random.normal(loc = 1.805229494637493*1e3, scale = h*1.805229494637493*1e3)
+    c = np.random.normal(loc = -61.45313597405551*1e-3, scale = abs(h*(-61.45313597405551)*1e-3))
+    d = np.random.normal(loc = 62.5925531735772, scale = h*62.5925531735772)
+    E = np.random.normal(loc = -66.61418754789635*1e-3, scale = abs(h*(-66.61418754789635)*1e-3))
+    vth = np.random.normal(loc = 10*1e-3, scale = h*10*1e-3)
+    C = np.random.normal(loc = 36.138071507338694*1e-12, scale = h*36.138071507338694*1e-12) #F
+    return k1,k2,k3,a,b,c,d,E,vth,C
+
+def paramshvcraRoss(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
+    h = h*1e-3 #to ensure required dynamics
     k1 = np.random.normal(loc = 0.034*1e6, scale = h*0.034*1e6)
     k2 = np.random.normal(loc = 4.7*1e3, scale = h*4.7*1e3)
     k3 = np.random.normal(loc = 144.54, scale = h*144.54)
@@ -31,7 +73,7 @@ def paramshvcra(h=0):#define parameters with homogeneity for a generic excitator
     C = np.random.normal(loc = 50*1e-12, scale = h*50*1e-12) #F (Normalisation Constant)
     return k1,k2,k3,a,b,c,d,E,vth,C
 
-def paramshvcx(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
+def paramshvcxRoss(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
     h = h*1e-3
     k1 = np.random.normal(loc = 0.042*1e6, scale = h*0.042*1e6)
     k2 = np.random.normal(loc = 4.96*1e3, scale = h*4.96*1e3)
@@ -45,7 +87,7 @@ def paramshvcx(h=0):#define parameters with homogeneity for a generic excitatory
     C = np.random.normal(loc = 46*1e-12, scale = h*46*1e-12) #F
     return k1,k2,k3,a,b,c,d,E,vth,C
 
-def paramshvcint(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
+def paramshvcintRoss(h=0):#define parameters with homogeneity for a generic excitatory HVC neuron
     h = h*1e-3
     k1 = np.random.normal(loc = 0.047*1e6, scale = h*0.047*1e6)
     k2 = np.random.normal(loc = 5.24*1e3, scale = h*5.24*1e3)

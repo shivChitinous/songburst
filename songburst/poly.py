@@ -25,12 +25,12 @@ def poly_start(N_max,
             N = 100,
             n_start = None,
             p_ra = 87, #proportion chosen to match empirical measurements
-            int_ra = -0.15, #strengths chosen to give chain-like activity
-            ra_int = 0.5,
-            ra_ra = 1,
-            p_ra_ra = 11,
-            p_int_ra = 15, #density - about 1/4th the empirical value
-            p_ra_int = 30,
+            int_ra = -0.1, #strengths chosen to give chain-like activity
+            ra_int = 2,
+            ra_ra = 2,
+            p_ra_ra = 50,
+            p_int_ra = 50, #density - about 1/4th the empirical value
+            p_ra_int = 50,
             frac = 1/2,
             del_mean_ra_ra = 3.5e-3, #in ms
             del_std_ra_ra = 2e-3,
@@ -121,10 +121,10 @@ def poly_start(N_max,
 
 
 def insert_new(neuron_typ,location,X,conn,delays,typ,n_ra,n_int,n_start,
-               int_ra = -0.15, #strengths chosen to give chain-like activity
-               ra_int = 0.5,
-               p_int_ra = 15, #density - about half the empirical value
-               p_ra_int = 30,
+               int_ra = -0.1, #strengths chosen to give chain-like activity
+               ra_int = 2,
+               p_int_ra = 50, #density - about half the empirical value
+               p_ra_int = 50,
                hra=0,
                hint=0,
                hx=0,

@@ -21,7 +21,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import matplotlib.patches as ptc
 import pickle
-
+from skimage.transform import downscale_local_mean
 
 
 def random_net(N,
@@ -96,9 +96,10 @@ def synfire_chain(N,
                   int_ra = -0.15, #strengths chosen to give chain-like activity
                   ra_int = 2,
                   ra_ra = 2.5,
-                  p_int_ra = 25, #density - about 1/4 the empirical value
-                  p_ra_int = 25,
-                  starter = np.random.randint(1) #random number seed
+                  p_int_ra = 50, #density
+                  p_ra_int = 50,
+                  starter = np.random.randint(1),
+                  suppress=False#random number seed
                  ):
     
     #calculating numbers of int and RA neurons
@@ -108,7 +109,8 @@ def synfire_chain(N,
     
     #calculating number of RA neurons per group
     pergroup = int(n_ra/groups)
-    print("RA projection neurons per group: ", pergroup)
+    if not suppress:
+        print("RA projection neurons per group: ", pergroup)
     
     #generating four random states
     number_rand = 2
@@ -122,15 +124,16 @@ def synfire_chain(N,
     neuron_ra = range(0,n_ra)
     neuron_int = range(n_ra,n_ra+n_int)
     
-    #interneuron-ra connections
-    synapses = np.array(np.meshgrid(neuron_int, neuron_ra)).T.reshape(-1,2)
-    which = rn[0].choice(range(n_int*n_ra),size=int(np.round(p_int_ra*(n_int*n_ra)/100)),replace=False)
-    conn[synapses[which,0],synapses[which,1]] = int_ra
+    if n_int>0:
+        #interneuron-ra connections
+        synapses = np.array(np.meshgrid(neuron_int, neuron_ra)).T.reshape(-1,2)
+        which = rn[0].choice(range(n_int*n_ra),size=int(np.round(p_int_ra*(n_int*n_ra)/100)),replace=False)
+        conn[synapses[which,0],synapses[which,1]] = int_ra
 
-    #ra-interneuron connections
-    synapses = np.array(np.meshgrid(neuron_ra, neuron_int)).T.reshape(-1,2)
-    which = rn[1].choice(range(n_int*n_ra),size=int(np.round(p_ra_int*(n_int*n_ra)/100)),replace=False)
-    conn[synapses[which,0],synapses[which,1]] = ra_int
+        #ra-interneuron connections
+        synapses = np.array(np.meshgrid(neuron_ra, neuron_int)).T.reshape(-1,2)
+        which = rn[1].choice(range(n_int*n_ra),size=int(np.round(p_ra_int*(n_int*n_ra)/100)),replace=False)
+        conn[synapses[which,0],synapses[which,1]] = ra_int
 
     #ra-ra connections
     for i in range(pergroup,n_ra-pergroup,pergroup):
@@ -146,12 +149,14 @@ def branched_chain(N,
                    groups, #number of groups
                    p_ra = 87, #proportion chosen to match empirical measurements
                    int_ra = -0.15, #strengths optimised to give chain-like 
-                   ra_int = 2,     #activity for Jin's parameters; groups=40
-                   ra_ra = 2.5, 
-                   p_int_ra = 25, #density according to Jin
-                   p_ra_int = 26, 
-                   frac = 0.7, #bifurcation parameter optimised for repeating INs
-                   starter = np.random.randint(1) #random number seed
+                   ra_int = 1,     #activity for Jin's parameters; groups=40
+                   ra_ra = 2, 
+                   p_int_ra = 50, #density according to Jin
+                   p_ra_int = 50, 
+                   bias = 0.5, #bifurcation parameter optimised for repeating INs
+                   starter = np.random.randint(1), #random number seed
+                   branch_frac = 1/2, #breakpoint for the chain
+                   suppress=False
                   ): 
     
     #calculating numbers of int and RA neurons
@@ -161,7 +166,8 @@ def branched_chain(N,
     
     #calculating number of RA neurons per group
     pergroup = int(n_ra/groups)
-    print("RA projection neurons per group: ", pergroup)
+    if not suppress:
+        print("RA projection neurons per group: ", pergroup)
     
     #generating four random states
     number_rand = 2
@@ -175,22 +181,23 @@ def branched_chain(N,
     neuron_ra = range(0,n_ra)
     neuron_int = range(n_ra,n_ra+n_int)
     
-    #interneuron-ra connections
-    synapses = np.array(np.meshgrid(neuron_int, neuron_ra)).T.reshape(-1,2)
-    which = rn[0].choice(range(n_int*n_ra),size=int(np.round(p_int_ra*(n_int*n_ra)/100)),replace=False)
-    conn[synapses[which,0],synapses[which,1]] = int_ra
+    if n_int>0:
+        #interneuron-ra connections
+        synapses = np.array(np.meshgrid(neuron_int, neuron_ra)).T.reshape(-1,2)
+        which = rn[0].choice(range(n_int*n_ra),size=int(np.round(p_int_ra*(n_int*n_ra)/100)),replace=False)
+        conn[synapses[which,0],synapses[which,1]] = int_ra
 
-    #ra-interneuron connections
-    synapses = np.array(np.meshgrid(neuron_ra, neuron_int)).T.reshape(-1,2)
-    which = rn[1].choice(range(n_int*n_ra),size=int(np.round(p_ra_int*(n_int*n_ra)/100)),replace=False)
-    conn[synapses[which,0],synapses[which,1]] = ra_int
+        #ra-interneuron connections
+        synapses = np.array(np.meshgrid(neuron_ra, neuron_int)).T.reshape(-1,2)
+        which = rn[1].choice(range(n_int*n_ra),size=int(np.round(p_ra_int*(n_int*n_ra)/100)),replace=False)
+        conn[synapses[which,0],synapses[which,1]] = ra_int
 
     #ra-ra connections
     for i in range(0,n_ra-pergroup,pergroup):
         conn[i-pergroup:i,i:i+pergroup] = ra_ra
-        if ((i>int(n_ra/2)) & (i<=(int(n_ra/2)+pergroup))):
-            conn[i-int(pergroup*frac):i,:pergroup] = ra_ra
-            conn[i-int(pergroup*frac):i,i:i+pergroup] = 0
+        if ((i>int(n_ra*branch_frac)) & (i<=(int(n_ra*branch_frac)+pergroup))):
+            conn[i-pergroup:i,:pergroup] = ra_ra*2*(1-bias)
+            conn[i-pergroup:i,i:i+pergroup] = ra_ra*2*bias
             branch_neuron=i
 
     conn[i:n_ra-pergroup,i+pergroup:n_ra] = ra_ra
@@ -199,7 +206,7 @@ def branched_chain(N,
     return conn,n_ra,n_int,branch_neuron,pergroup
 
 
-def plot_neuron(df,X,Neu,tmin,tmax,Iec_df=None,mod_df=None,save=False,name=None):
+def plot_neuron(df,X,Neu,tmin,tmax,Iec_df=None,mod_df=None,save=False,name=None,fig=None,ax=None):
     
     #checking for modulation
     if ((mod_df is None) & (Iec_df is None)): num = 2
@@ -207,7 +214,13 @@ def plot_neuron(df,X,Neu,tmin,tmax,Iec_df=None,mod_df=None,save=False,name=None)
     else: num = 4
     
     #create figure
-    fig,ax = plt.subplots(num,1,figsize=(5,num*4))
+    sns.set_style('white')
+    #create figure
+    if ax is None:
+        canSave = True
+        fig, ax = plt.subplots(num,1,figsize=(5,num*4)); 
+    else:
+        canSave = False
     
     #plot membrane voltage
     ax[0].plot(df['t'][(df['t']>tmin)&(df['t']<tmax)],X['N'][Neu].V[(df['t']>tmin)&(df['t']<tmax)]*1e3,
@@ -234,48 +247,56 @@ def plot_neuron(df,X,Neu,tmin,tmax,Iec_df=None,mod_df=None,save=False,name=None)
     ax[num-1].set_xlabel("Time (s)")
     
     #save figure
-    if save: plt.savefig(name,dpi=300,bbox_inches="tight")
-    plt.show()
+    if canSave:
+        sns.set()
+        if save: plt.savefig(name, dpi = 300, bbox_inches='tight')
+        plt.show();
 
 
-def plot_raster(df,X,tmin,tmax,n_ra=0,branch_neuron=0,patches=[[0,0,0,0]],save=False,name=None,sort=False):
-    
+def plot_raster(df,X,tmin,tmax,n_ra=0,branch_neuron=0,patches=[[0,0,0,0]],save=False,name=None,sort=False, ax=None, fig=None):
+     
+    sns.set_style('white')
     #create figure
-    fig = plt.figure(figsize=(4,8)); sns.set_style('white'); 
-    #set white background
-    ax=fig.add_axes([0,0,0.8,0.8])
-    
-    sns.despine(fig=fig,top=True, right=True, left=False, bottom=False);
+    if ax is None:
+        canSave = True
+        fig,ax = plt.subplots(1,1,figsize=(4,8)); 
+        ax.set_ylabel('$neuron$')
+    else:
+        canSave = False
     
     Y = X.copy()
     if sort is True:
         Y['firstburst'] = [np.append(df['t'][Y['N'].iloc[n].sptr==1],0)[0] for n in range(np.size(Y['N']))]
         Y.loc[Y['firstburst']==0.0,'firstburst']=float('NaN')
         Y = Y.sort_values(by=['firstburst'])
-    
+
     #run over the neurons
     for n in range(np.shape(Y)[0]):
-        x = df['t'].loc[(Y['N'].iloc[n].sptr == 1)]
-        p1, = plt.eventplot(x,linewidth=1,lineoffsets=n,color='k')
-    plt.xlabel('$t\ (s)$'); plt.ylabel('$neuron$')
-    plt.xlim([tmin,tmax])
-    
+        x = (df['t'].loc[(Y['N'].iloc[n].sptr == 1)]-tmin)*1e3 #ms
+        p1, = ax.eventplot(x,linewidth=1,lineoffsets=n,color='k')
+    ax.set_xlabel('$t\ (ms)$'); 
+    ax.set_xlim([0,(tmax-tmin)*1e3])
+
+    sns.despine(fig=fig,top=True, right=True, left=False, bottom=False, ax=ax);
+
     #add lines separating neurons
-    plt.axhline(branch_neuron, color='steelblue', alpha=branch_neuron!=0)
+    ax.axhline(branch_neuron, color='steelblue', alpha=branch_neuron!=0)
     if sort:
-        plt.axhline(len(Y)-n_ra-0.5, color='crimson',alpha=bool(n_ra!=0))
+        ax.axhline(len(Y)-n_ra-0.5, color='crimson',alpha=bool(n_ra!=0))
     else:
-        plt.axhline(n_ra, color='crimson',alpha=bool(n_ra!=0))
-    
+        ax.axhline(n_ra, color='crimson',alpha=bool(n_ra!=0))
+
     #add patches to show inputs
     for patch in patches:
         ax.add_patch(ptc.Rectangle((patch[2], patch[0]),patch[3],patch[1],fill = True,
                                alpha = 0.1,color = 'mediumpurple',linewidth = 0))
-    
-    #save figure
-    if save: plt.savefig(name, dpi = 800, bbox_inches='tight')
-    plt.show(); sns.set()
 
+    #save figure
+    if canSave:
+        sns.set()
+        if save: plt.savefig(name, dpi = 800, bbox_inches='tight')
+        plt.show();
+    
 
 def plot_interneurons(df,X,smoothed_activity,tmin,tmax,save=False,name=None):
     
@@ -336,3 +357,34 @@ def unbottle(filename,frame_name="X.csv"):
     f.close()
         
     return X
+
+def discretize(X,Iec_df,t,groups,n_ra,
+               before = 3, after=1.05
+              ):
+    S,U,tmax,tmin,dt = Norm(X, Iec_df, n_ra, groups, t, before=before, after=after)
+    t = np.arange(tmin,tmax,dt)
+    if t.shape[0]==0:
+        raise ValueError('Chain failed to propagate.')
+    s = downscale_local_mean(S, (1,int(S.shape[1]/t.shape[0])))
+    s = s*(S.shape[1]/s.shape[1])
+    u = downscale_local_mean(U, (1,int(U.shape[1]/t.shape[0])),cval=float('NaN'))
+    return s,u,tmax,tmin,dt
+
+def Norm(X, Iec_df, N, groups, t, before=3, after=1.05):
+    #groupsize
+    k = int(np.round(N/groups))
+    
+    #get start of chain and end of chain
+    tmin = t[np.where(X['N'].iloc[0].sptr)].min()
+    tmax = after*([t[np.where(X['N'].iloc[n].sptr)].max() for n in np.arange(
+    N-1,0,-1) if np.sum(X['N'].iloc[n].sptr)>0][0])
+    dt = np.nanmean([t[np.where(X['N'].iloc[i+k].sptr)].min()-t[np.where(
+    X['N'].iloc[i].sptr)].min() for i in range(N-k) if (
+    np.sum(X['N'].iloc[i+k].sptr)>0) & (np.sum(X['N'].iloc[i].sptr)>0)])
+    
+    tmin = tmin-before*dt #recompute
+    
+    S = np.array([X['N'][i].sptr for i in range(0,N)])[:,(t>=tmin) & (t<tmax)]
+    U = np.array([X['N'].iloc[i].Iin+Iec_df.iloc[:,i] for i in range(0,N)])[:,(t>=tmin) & (t<tmax)]
+    U = np.array([(U[i]-np.nanmean(U[0,:]))*X['C'].iloc[i]*1e9 for i in range(U.shape[0])]) #nA
+    return S,U,tmax,tmin,dt
