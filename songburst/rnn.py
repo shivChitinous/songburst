@@ -8,15 +8,26 @@ def U(W,u,s,alpha,j=0.1,noise=0.1):
     n = np.random.normal(loc=np.zeros(len(u)),scale=noise)
     return np.matmul(W.T,s) - alpha*np.sum(s) + j*u + n
 
-def activation(x,step=True,K=5,O=5,B=10):
+def activation(x,step=True,K=5,O=5,B=5):
     if step:
         A = B if x>O else 0
     else:
         A = np.max(np.array([K*(x-O),0]))
     return A
 
-def A(u,K=2,O=5,B=10,step=True):
-    a = np.array([activation(x,K=K,O=O,B=B,step=step) for x in u])
+def A(u,step=True,K=5,O=5,B=5,noise=0):
+    if noise>0:
+        #frequency of alive neurons
+        f = np.array([1-sp.stats.norm.cdf(O,loc=u[i],scale=noise) for i in range(len(u))])
+        up = u.copy()
+        for i in range(len(u)):
+            lower, upper = O, np.inf
+            mu, sigma = u[i], noise
+            up[i] = sp.stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, 
+                                       loc=mu, scale=sigma).mean()
+        a = np.array([f[i]*activation(up[i],step=step,K=K,O=O,B=B) for i in range(len(f))])
+    else:
+        a = np.array([activation(x,step=step,K=K,O=O,B=B) for x in u])
     return a
 
 def dB(u,s,alpha,j=0.1):
@@ -33,14 +44,15 @@ def evolve(N,W,k,b,Exc,Inh,u0,B,K,O,T,step=True,j=0.1,noise=0.1,dist='N',checkpo
         E = Exc*np.ones(T)
     else:
         E = Exc
-    alpha = Inh/k
+    alpha = Inh/k #normalize by k
+    w = W/k
 
     I[:k,1] = u0-E[0] #initial stimulus pulse
     
     #evolve activity
     for t in np.arange(1,T):
         #update membrane potential
-        u[:,t] = U(W,u[:,t-1],s[:,t-1],alpha,j=j,noise=noise) + E[t] + I[:,t]
+        u[:,t] = U(w,u[:,t-1],s[:,t-1],alpha,j=j,noise=noise) + E[t] + I[:,t]
         #update activity
         s[:,t] = A(u[:,t],K=K,O=O,B=B,step=step)
         #external input interpretation of internal currents
@@ -141,7 +153,7 @@ def rastermap(ax,x,T,N,cmap='Greys',xtickn=5,ytickn=5,**kwargs):
         spine.set_visible(True)
     return ax
 
-def weightmap(W, N, g, ax, cmap='viridis', tickn=5, tickc = 2, **kwargs):
+def weightmap(W, N, k, ax, cmap='viridis', tickn=5, tickc = 2, **kwargs):
     ax = sns.heatmap(W,cmap=cmap, square=True, 
                      cbar_kws = {'shrink':0.5,'ticks':np.round(np.unique(W),tickc),'aspect':40},ax=ax,**kwargs)
     ax.set_ylabel("presynaptic neuron");
@@ -150,7 +162,7 @@ def weightmap(W, N, g, ax, cmap='viridis', tickn=5, tickc = 2, **kwargs):
     ax.set_xticklabels(np.round(np.linspace(0,N,tickn)).astype('int'),rotation = 0)
     ax.set_yticks(np.linspace(0,N,tickn))
     ax.set_yticklabels(np.round(np.linspace(0,N,tickn)).astype('int'),rotation = 0)
-    ax.set_title(r"$N="+str(N)+", g="+str(g)+"$", fontsize=10);
+    ax.set_title(r"$N="+str(N)+", k="+str(k)+"$", fontsize=10);
     return ax
 
 def lesion(W,l=0,g=50,homo=False,seed=None):
