@@ -4,18 +4,18 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 
-def U(W,u,s,alpha,j=0.1,noise=0.1):
+def U(W,u,s,epsilon,iota,j=0.15,noise=0.25):
     n = np.random.normal(loc=np.zeros(len(u)),scale=noise)
-    return np.matmul(W.T,s) - alpha*np.sum(s) + j*u + n
+    return epsilon*np.matmul(W.T,s) - iota*np.sum(s) + j*u + n
 
-def activation(x,step=True,K=5,O=5,B=5):
+def activation(x,step=True,K=1.5,O=2,B=5):
     if step:
         A = B if x>O else 0
     else:
         A = np.max(np.array([K*(x-O),0]))
     return A
 
-def A(u,step=True,K=5,O=5,B=5,noise=0):
+def A(u,step=True,K=1.5,O=2,B=5,noise=0):
     if noise>0:
         #frequency of alive neurons
         f = np.array([1-sp.stats.norm.cdf(O,loc=u[i],scale=noise) for i in range(len(u))])
@@ -30,33 +30,34 @@ def A(u,step=True,K=5,O=5,B=5,noise=0):
         a = np.array([activation(x,step=step,K=K,O=O,B=B) for x in u])
     return a
 
-def dB(u,s,alpha,j=0.1):
+def dB(u,s,iota,j=0.15):
     #delta bias
-    return j*u - alpha*np.sum(s)
+    return j*u - iota*np.sum(s)
 
-def evolve(N,W,k,b,Exc,Inh,u0,B,K,O,T,step=True,j=0.1,noise=0.1,dist='N',checkpoint=0.01,percent_chain=0.5,sylls=['i','a']):
+def evolve(N,W,k,b,Exc,Inh,u0,Drive,B,K,O,T,step=True,j=0.15,noise=0.25,dist='N',checkpoint=0.01,percent_chain=0.5,sylls=['i','a']):
     #initialize
     s = np.zeros([N,T])
     u = np.zeros([N,T])
     I = np.zeros([N,T])
     
-    if np.isscalar(Exc):
-        E = Exc*np.ones(T)
+    if np.isscalar(Drive):
+        D = Drive*np.ones(T)
     else:
-        E = Exc
-    alpha = Inh/k #normalize by k
-    w = W/k
+        D = Drive
+    
+    iota = Inh/k #normalize by k
+    epsilon = Exc/k
 
-    I[:k,1] = u0-E[0] #initial stimulus pulse
+    I[:k,1] = u0-D[0] #initial stimulus pulse
     
     #evolve activity
     for t in np.arange(1,T):
         #update membrane potential
-        u[:,t] = U(w,u[:,t-1],s[:,t-1],alpha,j=j,noise=noise) + E[t] + I[:,t]
+        u[:,t] = U(W,u[:,t-1],s[:,t-1],epsilon,iota,j=j,noise=noise) + D[t] + I[:,t]
         #update activity
         s[:,t] = A(u[:,t],K=K,O=O,B=B,step=step)
-        #external input interpretation of internal currents
-        I[:,t] = u[:,t]-(dB(u[:,t-1],s[:,t-1],alpha,j=j)+E[t])
+        #external input interpretation of internal exitatory currents
+        I[:,t] = u[:,t]-(dB(u[:,t-1],s[:,t-1],iota,j=j)+D[t])
         
     #sequence
     seq, syllables = getSequence(s,N,k,b=b,checkpoint=checkpoint,percent_chain=percent_chain,sylls=sylls)
@@ -80,11 +81,11 @@ def probmap(Probability, excitation, inhibition, cmap='Reds', center=None, vmin=
     plt.ylabel('$I$')
     return ax
 
-def Ppropagation(N_trials,N,W,k,b,Exc,Inh,I0,B,K,O,T,step=True,j=0.1,noise=0.1,dist='N',checkpoint=0.1):
+def Ppropagation(N_trials,N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=True,j=0.1,noise=0.1,dist='N',checkpoint=0.1):
     p = 0
     for t in range(N_trials):
-        _,s,_,_,_ = evolve(N,W,k,b,Exc,Inh,I0,B,K,O,T,step=step,j=j,noise=noise,dist=dist)
-        p += np.sum(s[-int(s.shape[0]*checkpoint):,:])>0
+        _,s,_,_,_ = evolve(N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=step,j=j,noise=noise,dist=dist)
+        p += ((np.sum(s[-int(s.shape[0]*checkpoint):,:])>0) & (np.sum([s[-1,:]>0])<=1))
     return p/N_trials
 
 def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.1,percent_chain=0.5):
@@ -181,16 +182,16 @@ def lesion(W,l=0,g=50,homo=False,seed=None):
         Wl[:,lindex] = 0
     return Wl
 
-def TransProb(cDf, l, n_iterations, excitation, N, W, k, b, Inh, u0, B, K, O, T, step, j, noise, sylls=['g','h'], seed=None, homo=False):
+def TransProb(cDf, l, n_iterations, drive, N, W, k, b, Exc, Inh, u0, B, K, O, T, step, j, noise, sylls=['g','h'], seed=None, homo=False):
     print('*',end='')
     count = len(cDf) #counter to populate Df
     g = int(N/k)
     Wl = lesion(W,l,g=g,homo=homo,seed=seed)
-    for ei, exc in enumerate(excitation):
+    for di, D in enumerate(drive):
             Cl = pd.DataFrame(np.zeros([2,2]),columns=sylls, index= sylls)
             hashcount = 0
             for n in range(n_iterations):
-                _,_,seql,_,_ = evolve(N,Wl,k,b,exc,Inh*(1-l),u0,B,K,O,T,step,j,noise,sylls=sylls)
+                _,_,seql,_,_ = evolve(N,Wl,k,b,Exc,Inh*(1-l),u0,D,B,K,O,T,step,j,noise,sylls=sylls)
                 if '#' not in list(seql):
                     cl = countTransitions(seql)
                     Cl = Cl.add(cl/np.sum(cl.values),fill_value=0)
@@ -200,18 +201,18 @@ def TransProb(cDf, l, n_iterations, excitation, N, W, k, b, Inh, u0, B, K, O, T,
             cDf.loc[count,sylls[0]+'-'+sylls[0]] = ClNorm[0,0]
             cDf.loc[count,sylls[0]+'-'+sylls[1]] = ClNorm[0,1]
             cDf.loc[count,'lesion'] = l*100
-            cDf.loc[count,'excitation'] = exc
+            cDf.loc[count,'drive'] = D
             cDf.loc[count,'seed'] = seed
             count+=1
-            if len(excitation)>10:
-                if count%int(len(excitation)/10)==0:
+            if len(drive)>10:
+                if count%int(len(drive)/10)==0:
                     print('.',end='')
             else:
-                if count%(len(excitation))==0:
+                if count%(len(drive))==0:
                     print('.',end='')
     return cDf
 
-def biasI(biasDf,I,b,k,syllables,bias=0.38,link=0,E=0):
+def biasI(biasDf,I,b,k,syllables,bias=0.38,link=0,D=0):
     if biasDf is None:
         biasDf = pd.DataFrame(columns = ['bi','ba','sylls','bout'])
     count = len(biasDf)
@@ -226,12 +227,12 @@ def biasI(biasDf,I,b,k,syllables,bias=0.38,link=0,E=0):
         biasDf.loc[count,'bout'] = boutcount
         biasDf.loc[count,'bias'] = bias
         biasDf.loc[count,'link'] = link
-        biasDf.loc[count,'E'] = E
+        biasDf.loc[count,'D'] = D
         count+=1
     biasDf['ba'] = biasDf['ba'].astype('float')
     biasDf['bi'] = biasDf['bi'].astype('float')
     biasDf['bias'] = np.round(biasDf['bias'].astype('float'),2)
-    biasDf['E'] = np.round(biasDf['E'].astype('float'),2)
+    biasDf['D'] = np.round(biasDf['D'].astype('float'),2)
     biasDf['note'] = biasDf['sylls'].str[:1]
     biasDf['biasI'] = biasDf['bi']-biasDf['ba']
     return biasDf
@@ -248,8 +249,23 @@ def aborted(seq,maxi='i6'):
         ab = float('NaN')
     return ab
 
-def Et(Tst,T,A=5,s=0.1,b=0):
+def Dt(Tst,T,A=5,s=0.1,b=0):
     time = np.arange(0,T)
     I = ((1/(1+np.exp(-s*(time-Tst)))) - (1/(1+np.exp(-s*(-Tst)))))/(1 - (1/(1+np.exp(-s*(-Tst)))))
     return (A-b)*I+b
+
+def Flow(l1,lb,step=True,K=1.5,O=2,B=5,noise=0,Exc=0,Inh=0,D=0):
+    f1 = 1-sp.stats.norm.cdf(O,loc=l1,scale=noise)
+    fb = 1-sp.stats.norm.cdf(O,loc=lb,scale=noise)
+
+    lower, upper = O, np.inf
+    up1 = sp.stats.truncnorm((lower - l1) / noise, (upper - l1) / noise, 
+                                       loc=l1, scale=noise).mean()
+    
+    upb = sp.stats.truncnorm((lower - lb) / noise, (upper - lb) / noise, 
+                                       loc=lb, scale=noise).mean()
+    
+    l1p = D + f1*activation(up1,step=step,K=K,O=O,B=B*Exc*(1-Inh)) - fb*activation(upb,step=step,K=K,O=O,B=B*Exc*Inh)
+    lbp = D + fb*activation(upb,step=step,K=K,O=O,B=B*Exc*(1-Inh)) - f1*activation(up1,step=step,K=K,O=O,B=B*Exc*Inh)
+    return l1p, lbp
 
