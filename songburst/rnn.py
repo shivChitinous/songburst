@@ -8,14 +8,16 @@ def U(W,u,s,epsilon,iota,j=0.15,noise=0.25):
     n = np.random.normal(loc=np.zeros(len(u)),scale=noise)
     return epsilon*np.matmul(W.T,s) - iota*np.sum(s) + j*u + n
 
-def activation(x,step=True,K=1.5,O=2,B=5):
+def activation(x,step=True,ramp=False,K=1.5,O=2,B=5):
     if step:
         A = B if x>O else 0
+    elif ramp:
+        A = np.min(np.array([np.max(np.array([K*(x-O),0])),B]))
     else:
         A = np.max(np.array([K*(x-O),0]))
     return A
 
-def A(u,step=True,K=1.5,O=2,B=5,noise=0):
+def A(u,step=True,ramp=False,K=1.5,O=2,B=5,noise=0):
     if noise>0:
         #frequency of alive neurons
         f = np.array([1-sp.stats.norm.cdf(O,loc=u[i],scale=noise) for i in range(len(u))])
@@ -25,16 +27,16 @@ def A(u,step=True,K=1.5,O=2,B=5,noise=0):
             mu, sigma = u[i], noise
             up[i] = sp.stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, 
                                        loc=mu, scale=sigma).mean()
-        a = np.array([f[i]*activation(up[i],step=step,K=K,O=O,B=B) for i in range(len(f))])
+        a = np.array([f[i]*activation(up[i],step=step,ramp=ramp,K=K,O=O,B=B) for i in range(len(f))])
     else:
-        a = np.array([activation(x,step=step,K=K,O=O,B=B) for x in u])
+        a = np.array([activation(x,step=step,ramp=ramp,K=K,O=O,B=B) for x in u])
     return a
 
 def dB(u,s,iota,j=0.15):
     #delta bias
     return j*u - iota*np.sum(s)
 
-def evolve(N,W,k,b,Exc,Inh,u0,Drive,B,K,O,T,step=True,j=0.15,noise=0.25,dist='N',checkpoint=0.01,percent_chain=0.5,sylls=['i','a']):
+def evolve(N,W,k,b,Exc,Inh,u0,Drive,B,K,O,T,step=True,ramp=False,j=0.25,noise=0.25,checkpoint=0.05,percent_chain=0.7,sylls=['i','a']):
     #initialize
     s = np.zeros([N,T])
     u = np.zeros([N,T])
@@ -55,7 +57,7 @@ def evolve(N,W,k,b,Exc,Inh,u0,Drive,B,K,O,T,step=True,j=0.15,noise=0.25,dist='N'
         #update membrane potential
         u[:,t] = U(W,u[:,t-1],s[:,t-1],epsilon,iota,j=j,noise=noise) + D[t] + I[:,t]
         #update activity
-        s[:,t] = A(u[:,t],K=K,O=O,B=B,step=step)
+        s[:,t] = A(u[:,t],K=K,O=O,B=B,step=step,ramp=ramp)
         #external input interpretation of internal exitatory currents
         I[:,t] = u[:,t]-(dB(u[:,t-1],s[:,t-1],iota,j=j)+D[t])
         
@@ -81,14 +83,14 @@ def probmap(Probability, excitation, inhibition, cmap='Reds', center=None, vmin=
     plt.ylabel('$I$')
     return ax
 
-def Ppropagation(N_trials,N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=True,j=0.1,noise=0.1,dist='N',checkpoint=0.1):
+def Ppropagation(N_trials,N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=True,j=0.25,noise=0.25,checkpoint=0.05):
     p = 0
     for t in range(N_trials):
-        _,s,_,_,_ = evolve(N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=step,j=j,noise=noise,dist=dist)
+        _,s,_,_,_ = evolve(N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step,j,noise)
         p += ((np.sum(s[-int(s.shape[0]*checkpoint):,:])>0) & (np.sum([s[-1,:]>0])<=1))
     return p/N_trials
 
-def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.1,percent_chain=0.5):
+def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.01,percent_chain=0.5,B=5):
     
     #logical operations
     if b is not None:
@@ -96,18 +98,20 @@ def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.1,percent_chain=0.5)
         achain = np.any(s[b+int(N*checkpoint):N-int(N*checkpoint),:]>0,axis=0)
         minN = b
     else:
-        achain = np.any(s[int(N*checkpoint):N-int(N*checkpoint),:]>0,axis=0)
+        achain = np.any(s[int(N*checkpoint):N-int(N*checkpoint),:]==B,axis=0)
         ichain = np.zeros(np.shape(achain)).astype('bool')
         minN = N
-        
+
     silence = np.all(s[:,:]==0,axis=0)
-    collision = np.sum(s[:,:]>0,axis=0)>k
+    collision = np.sum(s[:,:]==B,axis=0)>k
     song = (~(silence) & ~(collision))
     iclean = ichain & song
     aclean = achain & song
     syll_labels,_ = sp.ndimage.label(iclean|aclean)
     syllables = np.zeros(np.shape(syll_labels)).astype('object')
     count = 0
+
+    plt.plot(collision)
     for l in np.unique(syll_labels)[1:]:
         if np.sum(syll_labels==l)>=(minN*percent_chain/k):
             if np.all(aclean[syll_labels==l]):
