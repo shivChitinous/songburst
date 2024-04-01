@@ -9,25 +9,27 @@ def U(W,u,s,epsilon,iota,j=0.15,noise=0.25):
     return epsilon*np.matmul(W.T,s) - iota*np.sum(s) + j*u + n
 
 def activation(x,step=True,ramp=False,K=1.5,O=2,B=5):
-    if step:
-        A = B if x>O else 0
-    elif ramp:
-        A = np.min(np.array([np.max(np.array([K*(x-O),0])),B]))
-    else:
+    if ramp:
         A = np.max(np.array([K*(x-O),0]))
+    else:
+        A = np.inf if x>O else 0
+    if step:
+        A = np.min(np.array([A,B]))
     return A
 
 def A(u,step=True,ramp=False,K=1.5,O=2,B=5,noise=0):
     if noise>0:
-        #frequency of alive neurons
-        f = np.array([1-sp.stats.norm.cdf(O,loc=u[i],scale=noise) for i in range(len(u))])
-        up = u.copy()
-        for i in range(len(u)):
-            lower, upper = O, np.inf
-            mu, sigma = u[i], noise
-            up[i] = sp.stats.truncnorm((lower - mu) / sigma, (upper - mu) / sigma, 
-                                       loc=mu, scale=sigma).mean()
-        a = np.array([f[i]*activation(up[i],step=step,ramp=ramp,K=K,O=O,B=B) for i in range(len(f))])
+        a = u.copy()
+        LD = O
+        HD = np.inf if not step else ((O + B/K) if ramp else O)
+        for i,ui in enumerate(u):
+            Norm = sp.stats.norm(loc=ui,scale=noise)
+            if LD == HD:
+                S1 = 0
+            else:
+                S1 = K*sp.integrate.quad(lambda x: Norm.pdf(x)*x, LD, HD)[0] - K*O*sp.integrate.quad(lambda x: Norm.pdf(x),LD,HD)[0]
+            S2 = B*sp.integrate.quad(lambda x: Norm.pdf(x),HD,np.inf)[0]
+            a[i] = S1+S2
     else:
         a = np.array([activation(x,step=step,ramp=ramp,K=K,O=O,B=B) for x in u])
     return a
@@ -86,8 +88,8 @@ def probmap(Probability, excitation, inhibition, cmap='Reds', center=None, vmin=
 def Ppropagation(N_trials,N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=True,j=0.25,noise=0.25,checkpoint=0.05):
     p = 0
     for t in range(N_trials):
-        _,s,_,_,_ = evolve(N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step,j,noise)
-        p += ((np.sum(s[-int(s.shape[0]*checkpoint):,:])>0) & (np.sum([s[-1,:]>0])<=1))
+        _,_,seq,_,_ = evolve(N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step,j,noise)
+        p += seq.str.contains('a').sum()
     return p/N_trials
 
 def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.01,percent_chain=0.5,B=5):
@@ -111,7 +113,6 @@ def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.01,percent_chain=0.5
     syllables = np.zeros(np.shape(syll_labels)).astype('object')
     count = 0
 
-    plt.plot(collision)
     for l in np.unique(syll_labels)[1:]:
         if np.sum(syll_labels==l)>=(minN*percent_chain/k):
             if np.all(aclean[syll_labels==l]):
