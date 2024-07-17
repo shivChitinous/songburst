@@ -98,8 +98,8 @@ def synfire_chain(N,
                   ra_ra = 2.5,
                   p_int_ra = 50, #density
                   p_ra_int = 50,
-                  starter = np.random.randint(1),
-                  suppress=False#random number seed
+                  starter = np.random.randint(1), #random number seed
+                  suppress=False
                  ):
     
     #calculating numbers of int and RA neurons
