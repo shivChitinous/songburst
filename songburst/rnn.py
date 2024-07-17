@@ -3,12 +3,16 @@ import scipy as sp
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from stable_trunc_gaussian import TruncatedGaussian as TG
+from torch import tensor as t
+from scipy.optimize import brentq
+from scipy.optimize import newton
 
-def U(W,u,s,epsilon,iota,j=0.15,noise=0.25):
+def U(W,u,s,epsilon,iota,j=0.25,noise=0.25):
     n = np.random.normal(loc=np.zeros(len(u)),scale=noise)
     return epsilon*np.matmul(W.T,s) - iota*np.sum(s) + j*u + n
 
-def activation(x,step=True,ramp=False,K=1.5,O=2,B=5):
+def activation(x,step=True,ramp=True,K=10,O=2,B=5):
     if ramp:
         A = np.max(np.array([K*(x-O),0]))
     else:
@@ -17,28 +21,81 @@ def activation(x,step=True,ramp=False,K=1.5,O=2,B=5):
         A = np.min(np.array([A,B]))
     return A
 
-def A(u,step=True,ramp=False,K=1.5,O=2,B=5,noise=0):
+def Factivation(x,step=True,ramp=True,K=10,O=2,B=5,noise=0.25):
+    LD = O
+    HD = np.inf if not step else ((O + B/K) if ramp else O)
+    if LD == HD:
+        S1 = 0
+    else:
+        aZ = (LD-x)/(np.sqrt(2)*noise)
+        bZ = (HD-x)/(np.sqrt(2)*noise)
+        S1 = K*((noise/np.sqrt(2*np.pi))*(np.exp(-aZ**2)-np.exp(-bZ**2)) + (x-O)/2*(sp.special.erf(bZ)-sp.special.erf(aZ)))
+    
+    S2 = (B/2)*(1 - (sp.special.erf((HD-x)/(np.sqrt(2)*noise))))
+    return S1+S2
+
+# Derivative of F(mu) with respect to mu for Newton-Raphson method #TODO: modify for ramp and step
+def dFactivation(x,K=10,O=2,B=5,noise=0.25):
+    S1 = K*(noise/np.sqrt(2 * np.pi))*(
+        ((O - x) / (noise ** 2)) * np.exp(-((O - x) ** 2) / (2 * noise ** 2)) -
+        ((O + K**-1 * B - x) / (noise ** 2)) * np.exp(-((O + K**-1 * B - x) ** 2) / (2 * noise ** 2)))
+    
+    S2 = K / 2 * (
+        sp.special.erf((O + K**-1 * B - x) / (np.sqrt(2) * noise)) -
+        sp.special.erf((O - x) / (np.sqrt(2) * noise)))
+    
+    S3 = (x - O) / 2 * (
+        -2 / (np.sqrt(np.pi) * noise) * np.exp(-((O + K**-1 * B - x) ** 2) / (2 * noise ** 2)) +
+        2 / (np.sqrt(np.pi) * noise) * np.exp(-((O - x) ** 2) / (2 * noise ** 2)))
+    
+    S4 = -(B / 2) * (2 / (np.sqrt(np.pi) * noise)) * np.exp(-((O + K**-1 * B - x) ** 2) / (2 * noise ** 2))
+    
+    return S1 + S2 + S3 + S4
+
+# Function to find root (inverse) of F(mu) - F_target = 0 using Newton-Raphson
+def Finverse(S,step=True,ramp=True,K=10,O=2,B=5,noise=0.25,ansatz=1.5):
     if noise>0:
-        a = u.copy()
-        LD = O
-        HD = np.inf if not step else ((O + B/K) if ramp else O)
-        for i,ui in enumerate(u):
-            Norm = sp.stats.norm(loc=ui,scale=noise)
-            if LD == HD:
-                S1 = 0
-            else:
-                S1 = K*sp.integrate.quad(lambda x: Norm.pdf(x)*x, LD, HD)[0] - K*O*sp.integrate.quad(lambda x: Norm.pdf(x),LD,HD)[0]
-            S2 = B*sp.integrate.quad(lambda x: Norm.pdf(x),HD,np.inf)[0]
-            a[i] = S1+S2
+        if (S>0)&(S<B):
+            func = lambda x: Factivation(x,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) - S
+            dfunc = lambda x: dFactivation(x,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+            #ansatz is improved initial guess based on previous solution
+            try:
+                mu = newton(func, ansatz, fprime=dfunc)
+            except RuntimeError:
+                # If Newton-Raphson fails, fallback to Brent's method
+                mu = brentq(func, -10, 10)  # Adjust bounds as necessary
+            return mu
+        elif S<=0.0:
+            return 0.0
+        elif S>=float(B):
+            return float(B)
+    else:
+        raise ValueError('F is not invertible')
+
+def A(u,step=True,ramp=True,K=10,O=2,B=5,noise=0.25):
+    if noise>0:
+        a = Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
     else:
         a = np.array([activation(x,step=step,ramp=ramp,K=K,O=O,B=B) for x in u])
     return a
 
-def dB(u,s,iota,j=0.15):
+def At(u0,T,Exc,Inh,D=0,step=True,ramp=True,K=10,O=2,B=5,j=0.25,noise=0.25):
+    u = np.zeros(T+1)
+    u[0] = u0
+    u[1] = (Exc-Inh)*Factivation(u0,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + D
+    for t in np.arange(1,T):
+        c1 = -np.sum([(j**i)*Inh*Factivation(u[t-1],step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) for i in np.arange(1,t+1)])
+        c2 = D*(1-(j**(t+1)))/(1-j)
+        c3 = (Exc-Inh)*Factivation(u[t],step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+        u[t+1] = c1+c2+c3
+    return u
+
+def dB(u,s,iota,j=0.25):
     #delta bias
     return j*u - iota*np.sum(s)
 
-def evolve(N,W,k,b,Exc,Inh,u0,Drive,B,K,O,T,step=True,ramp=False,j=0.25,noise=0.25,checkpoint=0.05,percent_chain=0.7,sylls=['i','a']):
+def evolve(N,W,k,b,Exc,Inh,u0,Drive,step=True,ramp=True,K=10,O=2,B=5,T=50,j=0.25,noise=0.25,checkpoint=0.05,percent_chain=0.55,sylls=['i','a'],seed=None,**kwargs):
+    np.random.seed(seed)
     #initialize
     s = np.zeros([N,T])
     u = np.zeros([N,T])
@@ -64,7 +121,7 @@ def evolve(N,W,k,b,Exc,Inh,u0,Drive,B,K,O,T,step=True,ramp=False,j=0.25,noise=0.
         I[:,t] = u[:,t]-(dB(u[:,t-1],s[:,t-1],iota,j=j)+D[t])
         
     #sequence
-    seq, syllables = getSequence(s,N,k,b=b,checkpoint=checkpoint,percent_chain=percent_chain,sylls=sylls)
+    seq, syllables = getSequence(s,N,k,b=b,checkpoint=checkpoint,percent_chain=percent_chain,sylls=sylls,B=B,**kwargs)
     
     return u,s,seq,syllables,I
 
@@ -85,15 +142,18 @@ def probmap(Probability, excitation, inhibition, cmap='Reds', center=None, vmin=
     plt.ylabel('$I$')
     return ax
 
-def Ppropagation(N_trials,N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step=True,j=0.25,noise=0.25,checkpoint=0.05):
+def Ppropagation(N_trials,N,W,k,b,Exc,Inh,u0,Drive,step=True,ramp=True,K=10,O=2,B=5,T=50,j=0.25,noise=0.25,checkpoint=0.05,**kwargs):
     p = 0
     for t in range(N_trials):
-        _,_,seq,_,_ = evolve(N,W,k,b,Exc,Inh,I0,Drive,B,K,O,T,step,j,noise)
+        _,_,seq,_,_ = evolve(N,W,k,b,Exc,Inh,u0,Drive,step=step,ramp=ramp,K=K,O=O,B=B,T=T,j=j,noise=noise,checkpoint=checkpoint,**kwargs)
         p += seq.str.contains('a').sum()
     return p/N_trials
 
-def getSequence(s,N,k,b=None,sylls = ['i','a'],checkpoint=0.01,percent_chain=0.5,B=5):
+def getSequence(s,N,k,b=None,checkpoint=0.05,percent_chain=0.55,sylls = ['i','a'],B=5,roundingThresh=2):
     
+    #clean up sequence for K!=\infty
+    s = np.round(s,roundingThresh)
+
     #logical operations
     if b is not None:
         ichain = np.any(s[int(N*checkpoint):b-int(N*checkpoint),:]>0,axis=0)
@@ -159,16 +219,17 @@ def rastermap(ax,x,T,N,cmap='Greys',xtickn=5,ytickn=5,**kwargs):
         spine.set_visible(True)
     return ax
 
-def weightmap(W, N, k, ax, cmap='viridis', tickn=5, tickc = 2, **kwargs):
+def weightmap(W, N, k, ax, cmap='viridis', tickn=5, tickc = 2, inset=False, **kwargs):
     ax = sns.heatmap(W,cmap=cmap, square=True, 
                      cbar_kws = {'shrink':0.5,'ticks':np.round(np.unique(W),tickc),'aspect':40},ax=ax,**kwargs)
-    ax.set_ylabel("presynaptic neuron");
-    ax.set_xlabel("postsynaptic neuron");
     ax.set_xticks(np.linspace(0,N,tickn))
     ax.set_xticklabels(np.round(np.linspace(0,N,tickn)).astype('int'),rotation = 0)
     ax.set_yticks(np.linspace(0,N,tickn))
     ax.set_yticklabels(np.round(np.linspace(0,N,tickn)).astype('int'),rotation = 0)
-    ax.set_title(r"$N="+str(N)+", k="+str(k)+"$", fontsize=10);
+    if not inset:
+        ax.set_ylabel("presynaptic neuron");
+        ax.set_xlabel("postsynaptic neuron");
+        ax.set_title(r"$N="+str(N)+", k="+str(k)+"$", fontsize=10);
     return ax
 
 def lesion(W,l=0,g=50,homo=False,seed=None):
@@ -187,7 +248,7 @@ def lesion(W,l=0,g=50,homo=False,seed=None):
         Wl[:,lindex] = 0
     return Wl
 
-def TransProb(cDf, l, n_iterations, drive, N, W, k, b, Exc, Inh, u0, B, K, O, T, step, j, noise, sylls=['g','h'], seed=None, homo=False):
+def TransProb(cDf, l, n_iterations, drive, N, W, k, b, Exc, Inh, u0, K, O, B, T, step, j, noise, sylls=['g','h'], seed=None, homo=False):
     print('*',end='')
     count = len(cDf) #counter to populate Df
     g = int(N/k)
@@ -259,18 +320,40 @@ def Dt(Tst,T,A=5,s=0.1,b=0):
     I = ((1/(1+np.exp(-s*(time-Tst)))) - (1/(1+np.exp(-s*(-Tst)))))/(1 - (1/(1+np.exp(-s*(-Tst)))))
     return (A-b)*I+b
 
-def Flow(l1,lb,step=True,K=1.5,O=2,B=5,noise=0,Exc=0,Inh=0,D=0):
-    f1 = 1-sp.stats.norm.cdf(O,loc=l1,scale=noise)
-    fb = 1-sp.stats.norm.cdf(O,loc=lb,scale=noise)
-
-    lower, upper = O, np.inf
-    up1 = sp.stats.truncnorm((lower - l1) / noise, (upper - l1) / noise, 
-                                       loc=l1, scale=noise).mean()
-    
-    upb = sp.stats.truncnorm((lower - lb) / noise, (upper - lb) / noise, 
-                                       loc=lb, scale=noise).mean()
-    
-    l1p = D + f1*activation(up1,step=step,K=K,O=O,B=B*Exc*(1-Inh)) - fb*activation(upb,step=step,K=K,O=O,B=B*Exc*Inh)
-    lbp = D + fb*activation(upb,step=step,K=K,O=O,B=B*Exc*(1-Inh)) - f1*activation(up1,step=step,K=K,O=O,B=B*Exc*Inh)
+def Flow(l1,lb,Exc,Inh,D=0,step=True,ramp=True,K=10,O=1.5,B=5,j=0.25,noise=0.25):
+    l1p = D/(1-j) + (Exc-Inh-(Inh*j)/(1-j))*Factivation(l1,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + (-Inh-(Inh*j)/(1-j))*Factivation(lb,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+    lbp = D/(1-j) + (Exc-Inh-(Inh*j)/(1-j))*Factivation(lb,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + (-Inh-(Inh*j)/(1-j))*Factivation(l1,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
     return l1p, lbp
+
+def uStar(u,Exc,Inh,D=0,step=True,ramp=True,K=10,O=2,B=5,j=0.25,noise=0.25,drive='extrinsic'):
+    if drive=='extrinsic':
+        return (Exc-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + D
+    elif drive=='intrinsic':
+        return ((Exc+D/B)-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+    elif drive=='excitability':
+        return (Exc-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise)
+
+def forwardPass(s0,order,Exc=1.5,Inh=0.25,D=0,step=True,ramp=True,K=10,O=2,B=5,j=0.25,noise=0.25,ansatz=1.5,drive='extrinsic'):
+    S = np.zeros([order,order]) ##cast into 32 bit float
+    S[-1,0] = float(s0)
+    for t in range(1,order):
+        Inh_term = Inh*np.sum(S[:,t-1])
+        Exc_term = Exc*sp.ndimage.shift(S[:,t-1],-1)
+        if drive=='extrinsic':
+            Mem_term = np.array([j*Finverse(st,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) for st in S[:,t-1]])
+            S[:,t] = Factivation(Mem_term + Exc_term - Inh_term + D,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+        elif drive=='excitability':
+            Mem_term = np.array([j*Finverse(st,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise) for st in S[:,t-1]])
+            S[:,t] = Factivation(Mem_term + Exc_term - Inh_term,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise)
+    return S
+
+'''
+def sStar(s,Exc,Inh,j,D=0,B=5,K=2,step=True,ramp=False,O=1.5,noise=0,drive='extrinsic',ansatz=2.5,order=1):
+    if drive=='extrinsic':
+        return Factivation(np.array([j*Finverse(st,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise,ansatz=ansatz) +Exc*st - Inh*st*order + D for st in s]),step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+    elif drive=='excitability':
+        return Factivation(np.array([j*Finverse(st,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise,ansatz=ansatz) +Exc*st - Inh*st*order for st in s]),step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise)
+'''
+                
+
 
