@@ -94,39 +94,46 @@ def dB(u,s,iota,j=0.25):
     #delta bias
     return j*u - iota*np.sum(s)
 
-def evolve(N,W,k,b,Exc,Inh,u0,Drive,step=True,ramp=True,K=10,O=2,B=5,T=50,j=0.25,noise=0.25,checkpoint=0.05,percent_chain=0.55,sylls=['i','a'],seed=None,**kwargs):
+def evolve(N,W,k,b,Exc,Inh,u0,D,step=True,ramp=True,K=10,O=1.5,B=5,T=50,j=0.25,noise=0.25,checkpoint=0.12,percent_chain=0.3,sylls=['i','a'],seed=None,excitability=False,excitability_factor=0.1,receptor_lesion=False,**kwargs):
     np.random.seed(seed)
     #initialize
     s = np.zeros([N,T])
     u = np.zeros([N,T])
     I = np.zeros([N,T])
-    
-    if np.isscalar(Drive):
-        D = Drive*np.ones(T)
-    else:
-        D = Drive
-    
+
+    #convert into time series
+    Bdrive = B*np.ones(T).copy()
+    Kdrive = K*np.ones(T).copy()
+    Ddrive = D*np.ones(T).copy()
+
+    if excitability:
+        if receptor_lesion:
+            _, _, Ddrive = modulateActivation(Exc,Inh,Ddrive,Kdrive,Bdrive,j=j,excitability_factor=excitability_factor)
+        else:
+            Kdrive, Bdrive, Ddrive = modulateActivation(Exc,Inh,Ddrive,Kdrive,Bdrive,j=j,excitability_factor=excitability_factor)
+
+    I[:k,1] = u0-Ddrive[0] #initial stimulus pulse
+
     iota = Inh/k #normalize by k
     epsilon = Exc/k
-
-    I[:k,1] = u0-D[0] #initial stimulus pulse
     
     #evolve activity
     for t in np.arange(1,T):
         #update membrane potential
-        u[:,t] = U(W,u[:,t-1],s[:,t-1],epsilon,iota,j=j,noise=noise) + D[t] + I[:,t]
+        u[:,t] = U(W,u[:,t-1],s[:,t-1],epsilon,iota,j=j,noise=noise) + Ddrive[t] + I[:,t]
         #update activity
-        s[:,t] = A(u[:,t],K=K,O=O,B=B,step=step,ramp=ramp)
+        s[:,t] = A(u[:,t],K=Kdrive[t],O=O,B=Bdrive[t],step=step,ramp=ramp)
         #external input interpretation of internal exitatory currents
-        I[:,t] = u[:,t]-(dB(u[:,t-1],s[:,t-1],iota,j=j)+D[t])
+        I[:,t] = u[:,t]-(dB(u[:,t-1],s[:,t-1],iota,j=j)+Ddrive[t])
         
     #sequence
     seq, syllables = getSequence(s,N,k,b=b,checkpoint=checkpoint,percent_chain=percent_chain,sylls=sylls,B=B,**kwargs)
     
     return u,s,seq,syllables,I
 
-def countTransitions(seq):
-    seq = seq[1:].str[:1]
+def countTransitions(seq,nsyls=2):
+    upto = (nsyls + 1) if nsyls is not None else None
+    seq = seq[1:upto].str[:1]
     c = pd.crosstab(seq, seq.shift(-1)).rename_axis(index=None, columns=None)
     return c
 
@@ -137,22 +144,23 @@ def probmap(Probability, excitation, inhibition, cmap='Reds', center=None, vmin=
                 xticklabels = np.round(excitation,2), 
                 yticklabels = np.round(inhibition,3),
                 ax=ax, cmap=cmap, center=center, vmin=vmin, vmax = vmax, square=True, **kwargs)
-    plt.ylim(0,len(inhibition))
-    plt.xlabel('$E$')
-    plt.ylabel('$I$')
+    ax.set_ylim(0,len(inhibition))
+    ax.set_xlabel('$E$')
+    ax.set_ylabel('$I$')
     return ax
 
-def Ppropagation(N_trials,N,W,k,b,Exc,Inh,u0,Drive,step=True,ramp=True,K=10,O=2,B=5,T=50,j=0.25,noise=0.25,checkpoint=0.05,**kwargs):
+def Ppropagation(N_trials,N,W,k,b,Exc,Inh,u0,Drive,step=True,ramp=True,K=10,O=1.5,B=5,T=50,j=0.25,noise=0.25,**kwargs):
     p = 0
     for t in range(N_trials):
-        _,_,seq,_,_ = evolve(N,W,k,b,Exc,Inh,u0,Drive,step=step,ramp=ramp,K=K,O=O,B=B,T=T,j=j,noise=noise,checkpoint=checkpoint,**kwargs)
+        _,_,seq,_,_ = evolve(N,W,k,b,Exc,Inh,u0,Drive,step=step,ramp=ramp,K=K,O=O,B=B,T=T,j=j,noise=noise,**kwargs)
         p += seq.str.contains('a').sum()
     return p/N_trials
 
-def getSequence(s,N,k,b=None,checkpoint=0.05,percent_chain=0.55,sylls = ['i','a'],B=5,roundingThresh=2):
+def getSequence(s,N,k,b=None,checkpoint=0.12,percent_chain=0.3,sylls = ['i','a'],B=5,O=2):
     
     #clean up sequence for K!=\infty
-    s = np.round(s,roundingThresh)
+    s[s<=O] = 0
+    s[s>O] = B
 
     #logical operations
     if b is not None:
@@ -248,7 +256,7 @@ def lesion(W,l=0,g=50,homo=False,seed=None):
         Wl[:,lindex] = 0
     return Wl
 
-def TransProb(cDf, l, n_iterations, drive, N, W, k, b, Exc, Inh, u0, K, O, B, T, step, j, noise, sylls=['g','h'], seed=None, homo=False):
+def TransProb(cDf, l, n_iterations, N, W, k, b, Exc, Inh, u0, drive, step, ramp, K, O, B, T, j, noise, sylls=['i','a'], seed=None, homo=False, conditional=True, nsylsCount=None, **kwargs):
     print('*',end='')
     count = len(cDf) #counter to populate Df
     g = int(N/k)
@@ -257,15 +265,19 @@ def TransProb(cDf, l, n_iterations, drive, N, W, k, b, Exc, Inh, u0, K, O, B, T,
             Cl = pd.DataFrame(np.zeros([2,2]),columns=sylls, index= sylls)
             hashcount = 0
             for n in range(n_iterations):
-                _,_,seql,_,_ = evolve(N,Wl,k,b,Exc,Inh*(1-l),u0,D,B,K,O,T,step,j,noise,sylls=sylls)
-                if '#' not in list(seql):
-                    cl = countTransitions(seql)
-                    Cl = Cl.add(cl/np.sum(cl.values),fill_value=0)
+                _,_,seql,_,_ = evolve(N,Wl,k,b,Exc,Inh*(1-l),u0,D,step=step,ramp=ramp,K=K,O=O,B=B,T=T,j=j,noise=noise,sylls=sylls,**kwargs)
+                if conditional:
+                    if '#' not in list(seql):
+                        cl = countTransitions(seql,nsyls=nsylsCount)
+                        Cl = Cl.add(cl/np.sum(cl.values),fill_value=0)
+                    else:
+                        hashcount += 1
                 else:
-                    hashcount += 1
-            ClNorm = Cl.values/(n_iterations-hashcount) if (n_iterations-hashcount)>0 else np.ones(np.shape(Cl.values))*float('NaN')
-            cDf.loc[count,sylls[0]+'-'+sylls[0]] = ClNorm[0,0]
-            cDf.loc[count,sylls[0]+'-'+sylls[1]] = ClNorm[0,1]
+                    cl = countTransitions(seql,nsyls=nsylsCount)
+                    Cl = Cl.add(cl/np.sum(cl.values),fill_value=0)
+            ClNorm = Cl/(n_iterations-hashcount) if (n_iterations-hashcount)>0 else pd.DataFrame(np.ones([2,2]),columns=sylls, index= sylls)*float('NaN')
+            cDf.loc[count,sylls[0]+'-'+sylls[0]] = ClNorm.loc[sylls[0],sylls[0]]
+            cDf.loc[count,sylls[0]+'-'+sylls[1]] = ClNorm.loc[sylls[0],sylls[1]]
             cDf.loc[count,'lesion'] = l*100
             cDf.loc[count,'drive'] = D
             cDf.loc[count,'seed'] = seed
@@ -274,13 +286,12 @@ def TransProb(cDf, l, n_iterations, drive, N, W, k, b, Exc, Inh, u0, K, O, B, T,
                 if count%int(len(drive)/10)==0:
                     print('.',end='')
             else:
-                if count%(len(drive))==0:
-                    print('.',end='')
+                print('.',end='')
     return cDf
 
-def biasI(biasDf,I,b,k,syllables,bias=0.38,link=0,D=0):
+def biasI(biasDf,I,b,k,syllables,bias=0.35,link=0,D=0,rounding=2):
     if biasDf is None:
-        biasDf = pd.DataFrame(columns = ['bi','ba','sylls','bout'])
+        biasDf = pd.DataFrame(columns = ['bi','ba','sylls','bout','bias','link','D'])
     count = len(biasDf)
     boutcount = biasDf['bout'].max()+1 if ~np.isnan(biasDf['bout'].max()) else 1
     bi = I[link:(link+1)*k,link+1::int(np.round(b/k))].mean(axis=0)
@@ -291,9 +302,9 @@ def biasI(biasDf,I,b,k,syllables,bias=0.38,link=0,D=0):
         biasDf.loc[count,'ba'] = ba[i]
         biasDf.loc[count,'sylls'] = sylls[i]
         biasDf.loc[count,'bout'] = boutcount
-        biasDf.loc[count,'bias'] = bias
+        biasDf.loc[count,'bias'] = np.round(bias,rounding)
         biasDf.loc[count,'link'] = link
-        biasDf.loc[count,'D'] = D
+        biasDf.loc[count,'D'] = np.round(D,rounding)
         count+=1
     biasDf['ba'] = biasDf['ba'].astype('float')
     biasDf['bi'] = biasDf['bi'].astype('float')
@@ -304,7 +315,7 @@ def biasI(biasDf,I,b,k,syllables,bias=0.38,link=0,D=0):
     return biasDf
 
 def INno(seq):
-    return int(seq.str[1:].max()) if (('a' in list(seq)) & ('#' not in list(seq))) else float('NaN')
+    return int(seq.str[1:].max()) if (('a' in list(seq)) & ('#' not in list(seq)))+1 else float('NaN')
 
 def aborted(seq,maxi='i6'):
     if (('a' not in list(seq)) & (maxi not in list(seq)) & ('#' not in list(seq))):
@@ -315,23 +326,29 @@ def aborted(seq,maxi='i6'):
         ab = float('NaN')
     return ab
 
+def modulateActivation(Exc,Inh,D,K,B,j=0.25,excitability_factor=0.1):
+    maxF = (Exc-Inh/(1-j))
+    scaleA = 1 + D/((1-j)*B*maxF)*excitability_factor
+    return K*scaleA, B*scaleA, D*(1-excitability_factor)
+
+def uStar(u,Exc,Inh,D=0,step=True,ramp=True,K=10,O=1.5,B=5,j=0.25,noise=0.25,drive='extrinsic',excitability_factor = 0.1):
+    if drive=='extrinsic':
+        return (Exc-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + D/(1-j)
+    elif drive=='intrinsic':
+        return ((Exc+D/((1-j)*B))-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+    elif drive=='excitability':
+        Kstar,Bstar,Dstar = modulateActivation(Exc,Inh,D,K,B,j=j,excitability_factor=excitability_factor)
+        return (Exc-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=Kstar,O=O,B=Bstar,noise=noise) + Dstar/(1-j)
+
 def Dt(Tst,T,A=5,s=0.1,b=0):
     time = np.arange(0,T)
     I = ((1/(1+np.exp(-s*(time-Tst)))) - (1/(1+np.exp(-s*(-Tst)))))/(1 - (1/(1+np.exp(-s*(-Tst)))))
     return (A-b)*I+b
 
 def Flow(l1,lb,Exc,Inh,D=0,step=True,ramp=True,K=10,O=1.5,B=5,j=0.25,noise=0.25):
-    l1p = D/(1-j) + (Exc-Inh-(Inh*j)/(1-j))*Factivation(l1,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + (-Inh-(Inh*j)/(1-j))*Factivation(lb,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
-    lbp = D/(1-j) + (Exc-Inh-(Inh*j)/(1-j))*Factivation(lb,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + (-Inh-(Inh*j)/(1-j))*Factivation(l1,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+    l1p = D/(1-j) + (Exc-Inh/(1-j))*Factivation(l1,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) - (Inh/(1-j))*Factivation(lb,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
+    lbp = D/(1-j) + (Exc-Inh/(1-j))*Factivation(lb,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) - (Inh/(1-j))*Factivation(l1,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
     return l1p, lbp
-
-def uStar(u,Exc,Inh,D=0,step=True,ramp=True,K=10,O=2,B=5,j=0.25,noise=0.25,drive='extrinsic'):
-    if drive=='extrinsic':
-        return (Exc-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise) + D
-    elif drive=='intrinsic':
-        return ((Exc+D/B)-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O,B=B,noise=noise)
-    elif drive=='excitability':
-        return (Exc-Inh-(Inh*j)/(1-j))*Factivation(u,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise)
 
 def forwardPass(s0,order,Exc=1.5,Inh=0.25,D=0,step=True,ramp=True,K=10,O=2,B=5,j=0.25,noise=0.25,ansatz=1.5,drive='extrinsic'):
     S = np.zeros([order,order]) ##cast into 32 bit float
@@ -346,6 +363,30 @@ def forwardPass(s0,order,Exc=1.5,Inh=0.25,D=0,step=True,ramp=True,K=10,O=2,B=5,j
             Mem_term = np.array([j*Finverse(st,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise) for st in S[:,t-1]])
             S[:,t] = Factivation(Mem_term + Exc_term - Inh_term,step=step,ramp=ramp,K=K,O=O-D,B=B,noise=noise)
     return S
+
+def Et(t, a0, a1, tau, slope):
+
+    # Define the error function with the specified parameters
+    scale_factor = (a1 - a0) / 2
+    shift_factor = (a1 + a0) / 2
+
+    # Adjust the error function to fit the desired parameters
+    return scale_factor * sp.special.erf((t - tau) * slope) + shift_factor
+
+def riseToSong(myDrive,myDriveParams,cDf,dvalSub,time,b,k,samples=100):
+    PaT = np.interp(myDrive[int(b/k)::int(b/k)],dvalSub,cDf['i-a'].values)
+    PiT = np.interp(myDrive[int(b/k)::int(b/k)],dvalSub,cDf['i-i'].values)
+    timeKicks = time[int(b/k)::int(b/k)]
+    probabilities = np.zeros(np.shape(PaT))
+    for t in range(len(PaT)):
+        Iprob = 1
+        for i in range(t-1):
+            if i>0:
+                Iprob *= PiT[i]
+        probabilities[t] = PaT[t]*Iprob
+    riseToSong = np.array([Et(np.arange(timeKicks[-n]-np.max(timeKicks),timeKicks[-n],1), a0= 0, a1=myDriveParams[0], 
+        tau = myDriveParams[1], slope=myDriveParams[2]) for n in np.arange(1,len(timeKicks)+1)])
+    return np.repeat(riseToSong, np.round(np.flip(probabilities)*samples).astype(int), axis=0)
 
 '''
 def sStar(s,Exc,Inh,j,D=0,B=5,K=2,step=True,ramp=False,O=1.5,noise=0,drive='extrinsic',ansatz=2.5,order=1):

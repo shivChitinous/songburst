@@ -61,7 +61,7 @@ def evolve(n1,df,psc = nrn.PSC(0.5e-3,1e-3,0.05e-9,1e-5)):
     Sps = n1.Ips.copy() #Sps is non-normalised current
     mod = n1.mod if hasattr(n1,'mod') else n1.Ips.copy() #if no modulatory input, then set it as 0
     
-    #convert to integers for speed
+    #convert to float for speed
     k1 = n1.k1; k2 = n1.k2; k3 = n1.k3; a = n1.a; b = n1.b; c = n1.c; d = n1.d
     vth = n1.vth; C = n1.C; Iec = n1.Iec
     
